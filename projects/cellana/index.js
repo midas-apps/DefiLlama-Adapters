@@ -1,17 +1,22 @@
 const { functionViewWithApiKey } = require("../helper/chain/aptos");
 const cellanaAddress = "0x4bf51972879e3b95c4781a5cdcb9e1ee24ef483e7d22f2d903626f126df62bd1"
-const apiKey = "AG-D6FATNFSEBBKFTMMXVFRXKIDZWJJFFDPC"
+const CELLANA_API_KEY = process.env.CELLANA_API_KEY
+
+function getApiKey() {
+  if (!CELLANA_API_KEY) throw new Error('CELLANA_API_KEY is required')
+  return CELLANA_API_KEY
+}
 
 async function _getPools() {
-  return functionViewWithApiKey({ functionStr: `${cellanaAddress}::liquidity_pool::all_pool_addresses`, type_arguments: [], args: [], apiKey: apiKey })
+  return functionViewWithApiKey({ functionStr: `${cellanaAddress}::liquidity_pool::all_pool_addresses`, type_arguments: [], args: [], apiKey: getApiKey() })
 }
 
 async function _getPoolReserves(poolAddress) {
-  return functionViewWithApiKey({ functionStr: `${cellanaAddress}::liquidity_pool::pool_reserves`, type_arguments: ['0x1::object::ObjectCore'], args: [poolAddress], apiKey: apiKey })
+  return functionViewWithApiKey({ functionStr: `${cellanaAddress}::liquidity_pool::pool_reserves`, type_arguments: ['0x1::object::ObjectCore'], args: [poolAddress], apiKey: getApiKey() })
 }
 
 async function _getTokenOfPool(poolAddress) {
-  return functionViewWithApiKey({ functionStr: `${cellanaAddress}::liquidity_pool::supported_token_strings`, type_arguments: [], args: [poolAddress], apiKey: apiKey })
+  return functionViewWithApiKey({ functionStr: `${cellanaAddress}::liquidity_pool::supported_token_strings`, type_arguments: [], args: [poolAddress], apiKey: getApiKey() })
 }
 
 

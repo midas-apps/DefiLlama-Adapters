@@ -13,10 +13,17 @@ const contractAddresses = {
   },
 };
 
-const poolsApis = {
-  osmosis: 'https://cache.marsprotocol.io/api/osmosis-1/tokens?x-apikey=7e3642de',
-  neutron: 'https://cache.marsprotocol.io/api/neutron-1/tokens?x-apikey=7e3642de',
+const poolsApiBases = {
+  osmosis: 'https://cache.marsprotocol.io/api/osmosis-1/tokens',
+  neutron: 'https://cache.marsprotocol.io/api/neutron-1/tokens',
 };
+const MARS_API_KEY = process.env.MARS_API_KEY;
+
+function getPoolsApi(chain) {
+  const endpoint = new URL(poolsApiBases[chain]);
+  if (MARS_API_KEY) endpoint.searchParams.set('x-apikey', MARS_API_KEY);
+  return endpoint.toString();
+}
 
 async function tvl(api) {
   const chain = api.chain;
@@ -54,7 +61,7 @@ async function tvl(api) {
     const assetDenoms = assetParams.map((asset) => asset.denom);
 
     // fetch pool infos from the poolsApi based on chain
-    const poolInfos = await getConfig(`mars-protocol/${chain}-pools`, poolsApis[chain]);
+    const poolInfos = await getConfig(`mars-protocol/${chain}-pools`, getPoolsApi(chain));
 
     // query the deposited amount for each asset and add it to the depositCoins array
     await Promise.all(

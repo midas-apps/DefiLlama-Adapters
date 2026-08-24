@@ -1,6 +1,9 @@
-name: Test_Change
 on:
-  pull_request
+  pull_request:
+
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -10,7 +13,7 @@ jobs:
         with:
           output: 'json'
           fileOutput: 'json'
-      
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -28,48 +31,49 @@ jobs:
           node-version: 20
           cache: 'pnpm'
 
-      - name: Install dependencies
-        run: pnpm install
-
-      - name: Run changes files through test script
+      - name: Reject dependency manifest changes
         env:
-          LLAMA_DEBUG_MODE: "true"
+          FILES_MODIFIED: ${{ steps.file_changes.outputs.files_modified }}
         run: |
-          RUN_FILES=$(
-            MODIFIED=${{ steps.file_changes.outputs.files_modified}} \
-            ADDED=${{ steps.file_changes.outputs.files_added}} \
-            node ${{ github.workspace }}/.github/workflows/getFileList.js
+          set -euo pipefail
+          if [[ "$FILES_MODIFIED" == *"package.json"* || "$FILES_MODIFIED" == *"package-lock.json"* ]]; then
+            echo "Dependency manifest changes are not accepted in adapter pull requests" >&2
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Run changed files through test script
+        env:
+          LLAMA_DEBUG_MODE: 'true'
+          MODIFIED_FILES: ${{ steps.file_changes.outputs.files_modified }}
+          ADDED_FILES: ${{ steps.file_changes.outputs.files_added }}
+          FILES_MODIFIED: ${{ steps.file_changes.outputs.files_modified }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mapfile -t RUN_FILES < <(
+            MODIFIED="$MODIFIED_FILES" \
+            ADDED="$ADDED_FILES" \
+            node "$GITHUB_WORKSPACE/.github/workflows/getFileList.js" \
+              | node -e 'for (const file of JSON.parse(require("fs").readFileSync(0, "utf8"))) console.log(file)'
           )
 
-          if [ "$RUN_FILES" = "[]" ]; then
+          if [ "${#RUN_FILES[@]}" -eq 0 ]; then
             echo "No adapter files were modified"
             exit 0
           fi
 
-          # pnpm remove typescript @types/async-retry @types/bn.js ts-node @solendprotocol/solend-sdk @hover-labs/kolibri-js
-
-          # fail if package.json or package-lock.json is changed
-          FILES_MODIFIED=${{ steps.file_changes.outputs.files_modified }}
-          if [[ $FILES_MODIFIED == *"package.json"* || $FILES_MODIFIED == *"package-lock.json"* ]]; then
-            echo "------ ERROR ------ > Please revert changes to package.json / package-lock.json" > /home/runner/work/DefiLlama-Adapters/DefiLlama-Adapters/output.txt
-            node ${{ github.workspace }}/.github/workflows/commentResult.js /home/runner/work/DefiLlama-Adapters/DefiLlama-Adapters/output.txt "${{ github.repository_owner }}" "${{ github.event.repository.name }}" "${{ github.event.number }}"
-            exit 1
-          fi
-
-          for i in $(echo $RUN_FILES | tr  -d '"[]' | tr "," "\n")
-          do 
-            { 
-              node ${{ github.workspace }}/test.js ${{ github.workspace }}/${i} 2>&1 | tee output.txt
-              node ${{ github.workspace }}/.github/workflows/commentResult.js /home/runner/work/DefiLlama-Adapters/DefiLlama-Adapters/output.txt "${{ github.repository_owner }}" "${{ github.event.repository.name }}" "${{ github.event.number }}" ${i}
-              if grep -q "\-\-\-\- ERROR \-\-\-\-" output.txt; then
-                exit 1;
-              fi
-            } || { 
-              echo -n $i
-              echo ' doesnt run'
-            }
+          for adapter_path in "${RUN_FILES[@]}"; do
+            output_file="$RUNNER_TEMP/output.txt"
+            node "$GITHUB_WORKSPACE/test.js" "$GITHUB_WORKSPACE/$adapter_path" 2>&1 | tee "$output_file"
+            GITHUB_TOKEN="$GITHUB_TOKEN" node "$GITHUB_WORKSPACE/.github/workflows/commentResult.js" \
+              "$output_file" "${{ github.repository_owner }}" "${{ github.event.repository.name }}" "${{ github.event.number }}" "$adapter_path"
+            if grep -q -- "---- ERROR ----" "$output_file"; then
+              exit 1
+            fi
           done
-        
+
       - name: Run ESLint
-        run: |
-          npm run lint
+        run: npm run lint
